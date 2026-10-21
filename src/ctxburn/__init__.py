@@ -1,6 +1,6 @@
 """ctxburn -- where did the agent's token budget actually go?"""
 
-from .analyze import CallCost, Report, SegCost, analyze
+from .analyze import CallStat, Report, SegStat, analyze
 from .capture import unwatch, watch
 from .model import Call, Segment, Trace
 
@@ -8,8 +8,8 @@ __version__ = "0.1.0"
 __all__ = [
     "analyze",
     "Report",
-    "CallCost",
-    "SegCost",
+    "CallStat",
+    "SegStat",
     "Trace",
     "Call",
     "Segment",

@@ -1,8 +1,9 @@
+import json
 import re
 
 from ctxburn.analyze import analyze
 from ctxburn.model import Call, Segment, Trace
-from ctxburn.render import render_html, summary_line
+from ctxburn.render import CHARTS, render_html, summary_line
 
 
 def _report(n=4):
@@ -17,9 +18,9 @@ def _report(n=4):
 
 def test_no_placeholder_survives_either_language():
     for lang in ("en", "zh"):
-        html = render_html(_report(), lang=lang)
-        leftovers = set(re.findall(r"@@[A-Z_]+@@", html))
-        assert leftovers == set(), (lang, leftovers)
+        for chart in CHARTS:
+            html = render_html(_report(), lang=lang, chart=chart)
+            assert set(re.findall(r"@@[A-Z_]+@@", html)) == set(), (lang, chart)
 
 
 def test_zh_report_is_actually_chinese():
@@ -27,7 +28,7 @@ def test_zh_report_is_actually_chinese():
     assert 'lang="zh"' in html
     assert "重发占比" in html
     assert "谁在付账" in html
-    assert "总花费" in html
+    assert "输入 token" in html
 
 
 def test_en_report_stays_english():
@@ -38,26 +39,49 @@ def test_en_report_stays_english():
 
 
 def test_unknown_lang_falls_back_to_english():
-    html = render_html(_report(), lang="klingon")
-    assert 'lang="en"' in html
+    assert 'lang="en"' in render_html(_report(), lang="klingon")
 
 
 def test_summary_line_localized():
     r = _report()
-    assert "%" in summary_line(r, "zh")
     assert "次调用" in summary_line(r, "zh")
     assert "calls" in summary_line(r, "en")
 
 
 def test_kind_names_stay_english_in_zh():
-    """They are identifiers from the trace file, not prose."""
     html = render_html(_report(), lang="zh")
     assert ">system<" in html
     assert ">tools<" in html
 
 
-def test_canvas_and_data_present():
-    html = render_html(_report(), lang="zh")
-    assert 'id="flame"' in html
+def test_no_dollar_signs_anywhere():
+    for lang in ("en", "zh"):
+        html = render_html(_report(), lang=lang)
+        assert "$" not in html.split("<script>")[0]
+
+
+def test_all_four_charts_are_reachable():
+    html = render_html(_report())
+    buttons = re.findall(r'data-chart="(\w+)"', html)
+    assert set(buttons) == set(CHARTS)
+    assert len(buttons) == 4
+
+
+def test_chart_arg_selects_default_view():
+    for c in CHARTS:
+        html = render_html(_report(), chart=c)
+        assert f'"chart":"{c}"' in html
+        assert f'class="tab on" data-chart="{c}"' in html
+
+
+def test_bad_chart_falls_back_to_flame():
+    assert '"chart":"flame"' in render_html(_report(), chart="scatter")
+
+
+def test_data_and_canvas_present():
+    html = render_html(_report())
+    assert 'id="chart"' in html
     assert "const D = {" in html
-    assert '"ui"' in html
+    payload = json.loads(re.search(r"const D = (\{.*?\});\nconst UI", html, re.S).group(1))
+    assert payload["n_calls"] == 4
+    assert payload["fresh_tokens"] + payload["replay_tokens"] == payload["total_input_tokens"]

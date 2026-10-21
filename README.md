@@ -2,19 +2,16 @@
 
 English | [中文](README_CN.md)
 
-**Where your agent's token budget actually goes.** Not what it did — what it paid to say it.
+**Where an agent's context window actually goes.** Not what it did — how much of what it sent had already been sent.
 
-A 8-turn coding agent re-sends its system prompt, its tool schemas, and its entire
-message history on every single turn. That is not a bug, it is how the API works.
-It is also, usually, most of the bill.
+An 8-turn coding agent re-sends its system prompt, its tool schemas and its entire message history on every single turn. That is not a bug, it is how the API works. It is also, usually, the majority of what you pay for.
 
-`ctxburn` records a run, splits every call's input tokens into **fresh** and **replay**,
-prices each one, and drops the result into a single HTML file you can open offline.
+`ctxburn` records a run, splits every call's input tokens into **fresh** and **replay**, and drops the result into a single HTML file you can open offline.
 
 ![report](assets/report.png)
 
 ```
-81% of input spend was text the agent had already sent before. 6 calls, 1.4x context growth.
+81% of all input tokens were re-sends of text the agent had already sent. 6 calls, 1.4x context growth.
 ```
 
 ## Install
@@ -30,7 +27,7 @@ Zero dependencies. Python 3.10+.
 ```python
 import ctxburn
 
-ctxburn.watch("run.jsonl")   # patch openai + anthropic clients
+ctxburn.watch("run.jsonl")   # patch the openai + anthropic clients
 
 # ... your agent runs completely unchanged ...
 ```
@@ -61,6 +58,24 @@ No API key? Kick the tires on the bundled synthetic run:
 ctxburn demo -o demo.jsonl && ctxburn report demo.jsonl -o demo.html
 ```
 
+## Four ways to look at the same run
+
+Switch inside the page; `--chart` picks which one it opens on.
+
+| view | what it shows | answers |
+|---|---|---|
+| **flame** | one row per call, width is tokens, dim is replay | what each turn's context was made of |
+| **bars** | one column per call, stacked by kind, dim is replay | how the total grows, and which kind drives it |
+| **lines** | total input vs freshly added tokens, per call | the shape of the growth — total climbs, new stays flat |
+| **donut** | every input token, by kind | who owns the bill at a glance |
+
+```bash
+ctxburn report run.jsonl --chart line
+```
+
+The line view is the one to show people: the two curves start together and then
+separate, and the widening gap is the replay tax drawn as a shape.
+
 ## What the numbers mean
 
 For every LLM call, `ctxburn` walks the context it sent and asks one question per
@@ -68,9 +83,9 @@ piece: *have I seen this exact text in an earlier call of this run?*
 
 | term | meaning |
 |---|---|
-| **fresh** | tokens sent for the first time. The only input you had to pay for. |
+| **fresh** | tokens sent for the first time. The only input you had to send. |
 | **replay** | tokens that were already sent in an earlier call and are being sent again. |
-| **cached** | replay tokens the provider billed at the discounted prefix-cache rate. |
+| **cached** | replay tokens the provider billed at the discounted prefix-cache rate. A subset of replay. |
 
 Replay is not automatically waste — some of it is unavoidable, and caching makes
 much of it cheap. But you cannot optimize what you cannot see, and a 60–90% replay
@@ -89,7 +104,7 @@ the same problem, and the flame graph solved it.
 |---|---|
 | Langfuse / Phoenix / LangSmith | what happened on turn 7 |
 | [agentpprof](https://github.com/eunomia-bpf/agentsight) | which *kind of task* burned the budget across many runs |
-| **ctxburn** | which part of *this context* is being re-billed, and how much |
+| **ctxburn** | which part of *this context* is being re-sent, and how much |
 
 ctxburn is complementary: it eats the same call stream and only cares about the
 composition of each request.
@@ -104,41 +119,28 @@ your system prompt versus the tool result you pasted in at turn 3. So:
 2. Piece sizes are estimated by a dependency-free estimator (ASCII ≈ 4 chars/token,
    CJK ≈ 1.6 chars/token) and then **scaled so they sum exactly to the provider's
    reported total**. The whole is exact, the split is approximate.
-3. Each piece is priced with the built-in table (`src/ctxburn/pricing.py`),
-   honoring `cached_tokens` at the discounted rate.
+3. `cached_tokens` is spread across the replayed pieces by weight, and reported
+   separately — it is a billing discount, not a different amount of context.
 
-### Where the prices come from
+## Tokens, not dollars
 
-Ask the tool:
+ctxburn does not show money. That is on purpose.
 
-```bash
-ctxburn prices
-```
+A dollar figure needs a price table, a price table goes stale, and a stale price
+table turns a guess into something that looks like a measurement. The token counts
+here come from the provider's own `usage` field — they are quoted, not modelled.
 
-That prints every rate with its snapshot date and source. The current table is a
-2026-10-22 snapshot read from [models.dev](https://models.dev/api.json), vendor
-entries only, in $ per 1M tokens.
-
-A snapshot goes stale. When a model is not in the table, ctxburn falls back to a
-default rate and says so in the report footer rather than quietly inventing a
-number. Fix it per run or wholesale:
-
-```bash
-ctxburn report run.jsonl --set-price "my-model=1.0,4.0,0.1"
-ctxburn report run.jsonl --prices my-prices.json
-```
-
-One property worth knowing: the replay **ratio** does not depend on prices,
-because fresh and replayed tokens are billed at the same input rate. A wrong
-table moves the dollar figures, not the share.
+If you want cost, multiply by your own rate. `ctxburn report --json` gives you the
+full per-call and per-kind breakdown.
 
 ## Honest limitations
 
-- The split between pieces is estimated; only the per-call total is authoritative.
-- Prices are reference values. They move. Override them.
+- The split *between* pieces is estimated; only the per-call total is authoritative.
 - Text is stored verbatim in the trace by default (it is how replay is detected).
   Use `ctxburn.watch(..., keep_content=False)` to truncate bodies to 400 chars.
 - One trace = one run. Cross-run aggregation is deliberately out of scope.
+- Python only. A Node or Go agent is invisible to it; that is what a proxy mode
+  would solve, and it is not built yet.
 
 ## License
 

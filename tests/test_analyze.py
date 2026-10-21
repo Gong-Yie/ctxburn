@@ -19,8 +19,8 @@ def _trace(n=4, tool_tokens=300, model="claude-sonnet-4"):
 
 def test_first_call_is_all_fresh():
     r = analyze(_trace(1))
-    assert r.cost_replay == 0
-    assert r.cost_fresh > 0
+    assert r.replay_tokens == 0
+    assert r.fresh_tokens > 0
     assert r.replay_ratio == 0
 
 
@@ -46,6 +46,12 @@ def test_segment_tokens_sum_to_reported():
         assert sum(s.tokens for s in rp.segments) == call.input_tokens
 
 
+def test_fresh_plus_replay_equals_input_total():
+    r = analyze(_trace(5))
+    assert r.fresh_tokens + r.replay_tokens == r.total_input_tokens
+    assert sum(c.fresh_tokens + c.replay_tokens for c in r.calls) == r.total_input_tokens
+
+
 def test_cached_tokens_never_exceed_replay():
     t = _trace(3)
     t.calls[2].cached_tokens = 10_000_000
@@ -55,25 +61,31 @@ def test_cached_tokens_never_exceed_replay():
     assert all(s.cached_tokens == 0 for s in c.segments if not s.replay)
 
 
-def test_cached_is_cheaper_than_uncached():
+def test_cached_does_not_change_the_ratio():
+    """Caching is a billing discount, not a different amount of context."""
     t1 = _trace(3)
     t2 = _trace(3)
     t2.calls[2].cached_tokens = t2.calls[2].input_tokens
-    a, b = analyze(t1), analyze(t2)
-    assert b.cost_cached > 0
-    assert b.total_cost < a.total_cost
+    assert analyze(t1).replay_ratio == analyze(t2).replay_ratio
 
 
-def test_output_tokens_are_priced_separately():
+def test_by_kind_totals_match_input():
+    r = analyze(_trace(4))
+    assert sum(v[0] for v in r.by_kind.values()) == r.total_input_tokens
+    assert sum(v[1] for v in r.by_kind.values()) == r.replay_tokens
+
+
+def test_top_segments_sorted_by_tokens():
+    r = analyze(_trace(4))
+    toks = [s["tokens"] for s in r.top_segments]
+    assert toks == sorted(toks, reverse=True)
+    assert r.top_segments[0]["kind"] == "system"
+
+
+def test_output_tokens_tracked_separately():
     r = analyze(_trace(2))
-    assert r.cost_output > 0
-    assert abs(r.total_cost - (r.cost_fresh + r.cost_replay + r.cost_cached + r.cost_output)) < 1e-9
-
-
-def test_unknown_model_still_prices():
-    r = analyze(_trace(2, model="totally-made-up-9000"))
-    assert r.total_cost > 0
-    assert r.priced_estimate is True
+    assert r.total_output_tokens == 200
+    assert r.total_output_tokens not in (r.fresh_tokens, r.replay_tokens)
 
 
 def test_empty_context_does_not_crash():
@@ -81,9 +93,16 @@ def test_empty_context_does_not_crash():
     t.add(Call(model="gpt-4o", segments=[], input_tokens=0, output_tokens=0))
     r = analyze(t)
     assert r.n_calls == 1
-    assert r.total_cost == 0
+    assert r.total_input_tokens == 0
+    assert r.replay_ratio == 0
 
 
 def test_growth_metric():
-    r = analyze(_trace(5))
-    assert r.context_growth > 1.0
+    assert analyze(_trace(5)).context_growth > 1.0
+
+
+def test_notes_carried_through():
+    t = _trace(2)
+    t.calls[1].note = "server-side context"
+    r = analyze(t)
+    assert r.notes == ["server-side context"]
