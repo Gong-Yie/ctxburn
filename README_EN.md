@@ -8,7 +8,7 @@ An 8-turn coding agent re-sends its system prompt, its tool schemas and its enti
 
 `ctxburn` records a run, splits every call's input tokens into **fresh** and **replay**, and drops the result into a single HTML file you can open offline.
 
-![report](assets/report_en.png)
+![report](https://cdn.jsdelivr.net/gh/Gong-Yie/ctxburn@main/assets/report_en.png)
 
 ```
 81% of all input tokens were re-sends of text the agent had already sent. 6 calls, 1.4x context growth.

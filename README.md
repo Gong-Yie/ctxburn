@@ -8,7 +8,7 @@
 
 `ctxburn` 记录一次运行，把每次调用的输入 token 拆成**首次发送**和**重发**，然后生成一个离线能打开的单文件 HTML。
 
-![report](assets/report.png)
+![report](https://cdn.jsdelivr.net/gh/Gong-Yie/ctxburn@main/assets/report.png)
 
 ```
 所有输入 token 里有 81% 是在重发之前已经发过的内容。6 次调用，上下文增长到 1.5x。
