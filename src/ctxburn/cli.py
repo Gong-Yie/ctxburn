@@ -38,6 +38,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         f.write(html)
 
     print(summary_line(report))
+    for n in report.notes:
+        print(f"  ! {n}")
     print()
     print(f"  total      {_money(report.total_cost)}")
     print(f"  fresh      {_money(report.cost_fresh)}")

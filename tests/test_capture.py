@@ -1,4 +1,8 @@
-from ctxburn.capture import segments_from_anthropic, segments_from_openai
+from ctxburn.capture import (
+    segments_from_anthropic,
+    segments_from_openai,
+    segments_from_responses,
+)
 from ctxburn.model import Call, Segment, Trace
 from ctxburn.tokens import estimate_tokens
 
@@ -81,6 +85,59 @@ def test_identical_context_produces_identical_keys():
     a = segments_from_openai(msgs, [{"z": 1, "a": 2}])[0]
     b = segments_from_openai(msgs, [{"a": 2, "z": 1}])[0]
     assert a.key == b.key
+
+
+def test_responses_flat_input_items():
+    segs = segments_from_responses(
+        [
+            {"role": "user", "content": "find the bug"},
+            {"type": "function_call", "call_id": "c1", "name": "grep", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "c1", "output": "found it"},
+        ],
+        "you are a bot",
+        [{"type": "function", "name": "grep", "parameters": {"type": "object"}}],
+    )
+    assert [s.kind for s in segs] == ["system", "tools", "user", "assistant", "tool"]
+    assert "found it" in segs[-1].text
+
+
+def test_responses_string_input():
+    segs = segments_from_responses("just a string", None, None)
+    assert len(segs) == 1
+    assert segs[0].kind == "user"
+
+
+def test_responses_unknown_item_is_kept_not_dropped():
+    segs = segments_from_responses([{"type": "reasoning", "summary": [{"text": "hm"}]}], None, None)
+    assert len(segs) == 1
+    assert "reasoning" in segs[0].text
+
+
+def test_responses_two_calls_same_tool_get_distinct_keys():
+    a = segments_from_responses(
+        [{"type": "function_call", "call_id": "1", "name": "x", "arguments": "{}"}], None, None
+    )
+    b = segments_from_responses(
+        [{"type": "function_call", "call_id": "2", "name": "x", "arguments": "{}"}], None, None
+    )
+    assert a[0].key != b[0].key
+
+
+def test_watch_patches_responses_endpoint():
+    import pytest
+
+    pytest.importorskip("openai")
+    from openai.resources.responses import Responses
+
+    import ctxburn
+
+    before = Responses.create
+    ctxburn.watch(None)
+    try:
+        assert Responses.create is not before
+    finally:
+        ctxburn.unwatch()
+    assert Responses.create is before
 
 
 def test_trace_roundtrip(tmp_path):

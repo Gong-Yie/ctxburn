@@ -37,6 +37,7 @@ class CallCost:
     cost_cached: float
     cost_output: float
     cost: float
+    note: str | None = None
     segments: list[SegCost] = field(default_factory=list)
 
 
@@ -75,6 +76,11 @@ class Report:
         return self.calls[-1].input_tokens / first
 
     @property
+    def notes(self) -> list[str]:
+        """Reasons some calls could not be attributed cleanly."""
+        return sorted({c.note for c in self.calls if c.note})
+
+    @property
     def per_turn_cost(self) -> float:
         return self.total_cost / self.n_calls if self.n_calls else 0.0
 
@@ -94,6 +100,7 @@ class Report:
             "n_calls": self.n_calls,
             "by_kind": self.by_kind,
             "top_segments": self.top_segments,
+            "notes": self.notes,
             "priced_estimate": self.priced_estimate,
             "calls": [
                 {
@@ -245,6 +252,7 @@ def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
                 cost_cached=cost_cached,
                 cost_output=cost_out,
                 cost=cost_fresh + cost_replay + cost_cached + cost_out,
+                note=call.note,
                 segments=segs,
             )
         )

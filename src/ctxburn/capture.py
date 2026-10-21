@@ -117,6 +117,50 @@ def segments_from_anthropic(
     return segs
 
 
+def segments_from_responses(input, instructions, tools) -> list[Segment]:
+    """Responses API: flat `input` items, system prompt in `instructions`.
+
+    Items are discriminated by `type`: messages carry a role, `function_call`
+    items are the model's tool calls, `*_output` items are tool results, and
+    everything else (reasoning, computer_call, mcp_call, ...) is passed through
+    as an opaque assistant-side block. Unknown types are serialized whole, so a
+    change in any field still changes the fingerprint.
+    """
+    segs: list[Segment] = []
+    if instructions:
+        segs.append(Segment("system", _text_of(instructions)))
+    segs.extend(_tool_segments(tools))
+    if isinstance(input, str):
+        segs.append(Segment("user", input))
+        return segs
+    for item in input or []:
+        if isinstance(item, str):
+            segs.append(Segment("user", item))
+            continue
+        if not isinstance(item, dict):
+            item = item.model_dump() if hasattr(item, "model_dump") else {"repr": str(item)}
+        typ = item.get("type")
+        if typ in (None, "message"):
+            role = item.get("role", "user")
+            kind = "system" if role in ("system", "developer") else role
+            if kind not in ("system", "user", "assistant"):
+                kind = "user"
+            segs.append(Segment(kind, _text_of(item.get("content"))))
+        elif typ == "function_call" or typ == "custom_tool_call":
+            segs.append(Segment("assistant", json.dumps(item, sort_keys=True, ensure_ascii=False)))
+        elif isinstance(typ, str) and typ.endswith("_output"):
+            out = item.get("output", item.get("content", ""))
+            text = (
+                out
+                if isinstance(out, str)
+                else json.dumps(out, sort_keys=True, ensure_ascii=False)
+            )
+            segs.append(Segment("tool", f"{item.get('call_id', '')}\n{text}"))
+        else:
+            segs.append(Segment("assistant", json.dumps(item, sort_keys=True, ensure_ascii=False)))
+    return segs
+
+
 # ------------------------------------------------------------------- recorder
 
 
@@ -165,6 +209,90 @@ def _usage_anthropic(resp) -> tuple[int, int, int]:
         getattr(u, "output_tokens", 0) or 0,
         getattr(u, "cache_read_input_tokens", 0) or 0,
     )
+
+
+def _usage_responses(resp) -> tuple[int, int, int]:
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return 0, 0, 0
+    cached = 0
+    details = getattr(u, "input_tokens_details", None)
+    if details is not None:
+        cached = getattr(details, "cached_tokens", 0) or 0
+    return (
+        getattr(u, "input_tokens", 0) or 0,
+        getattr(u, "output_tokens", 0) or 0,
+        cached,
+    )
+
+
+def _patch_openai_responses(rec: _Recorder) -> None:
+    try:
+        from openai.resources.responses import Responses
+    except Exception:
+        return
+
+    original = Responses.create
+
+    def create(self, *args, **kwargs):
+        resp = original(self, *args, **kwargs)
+        if kwargs.get("stream"):
+            return _tap_stream_responses(resp, kwargs, rec)
+        inp, out, cached = _usage_responses(resp)
+        rec.write(
+            Call(
+                model=kwargs.get("model") or getattr(resp, "model", "unknown"),
+                segments=segments_from_responses(
+                    kwargs.get("input"), kwargs.get("instructions"), kwargs.get("tools")
+                ),
+                input_tokens=inp,
+                output_tokens=out,
+                cached_tokens=cached,
+                note=_server_side_note(kwargs),
+            )
+        )
+        return resp
+
+    _ORIGINALS.append((Responses, "create", original))
+    Responses.create = create
+    _ACTIVE.append(rec)
+
+
+def _tap_stream_responses(stream, kwargs, rec: _Recorder):
+    def gen():
+        final = None
+        for event in stream:
+            if getattr(event, "type", None) in ("response.completed", "response.incomplete"):
+                final = getattr(event, "response", None)
+            yield event
+        if final is not None:
+            inp, out, cached = _usage_responses(final)
+            rec.write(
+                Call(
+                    model=kwargs.get("model") or getattr(final, "model", "unknown"),
+                    segments=segments_from_responses(
+                        kwargs.get("input"), kwargs.get("instructions"), kwargs.get("tools")
+                    ),
+                    input_tokens=inp,
+                    output_tokens=out,
+                    cached_tokens=cached,
+                    note=_server_side_note(kwargs),
+                )
+            )
+
+    return gen()
+
+
+def _server_side_note(kwargs) -> str | None:
+    """previous_response_id / conversation moves context server-side.
+
+    The usage still bills the whole history, but the request body only carries
+    the new turn, so the per-segment split cannot be attributed. Say so instead
+    of silently scaling a tiny context up to the full bill.
+    """
+    if kwargs.get("previous_response_id") or kwargs.get("conversation"):
+        return "server-side context (previous_response_id/conversation): segment split unavailable"
+    return None
 
 
 def _patch_openai(rec: _Recorder) -> None:
@@ -268,6 +396,7 @@ def watch(
     trace = Trace(name=name, meta={"tool": "ctxburn.watch"})
     rec = _Recorder(trace, path, keep_content)
     _patch_openai(rec)
+    _patch_openai_responses(rec)
     _patch_anthropic(rec)
     if not _ACTIVE:
         _warn("neither openai nor anthropic is importable; nothing to record")

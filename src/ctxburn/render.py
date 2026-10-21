@@ -75,6 +75,8 @@ def render_html(report: Report, title: str | None = None) -> str:
     html = html.replace("__INTOK__", f"{r.total_input_tokens:,}")
     html = html.replace("__KINDROWS__", kind_rows)
     html = html.replace("__TOP_ROWS__", top_rows)
+    warn = "".join(f'<div class="warn">{escape(n)}</div>' for n in r.notes)
+    html = html.replace("__WARN__", warn)
     html = html.replace("__DATA__", payload.replace("</", "<\\/"))
     return html
 
@@ -122,11 +124,14 @@ _TEMPLATE = """<!doctype html>
     font-size:12px;max-width:420px;z-index:9;box-shadow:0 8px 24px #0009}
   #tip b{color:var(--fresh)}
   .dim{color:var(--dim)}
+  .warn{background:#2a1a12;border:1px solid #5c3a1e;color:#ffb26b;border-radius:8px;
+    padding:10px 14px;font-size:13px;margin:-12px 0 20px}
   footer{margin-top:44px;color:#5c6779;font-size:12px}
   code{font-family:ui-monospace,Menlo,monospace;color:#c9d4e2}
 </style></head><body><div class="wrap">
   <h1>__TITLE__</h1>
   <p class="sub">__SUMMARY__</p>
+  __WARN__
 
   <div class="kpis">
     <div class="kpi"><div class="k">total spend</div><div class="v">__TOTAL__</div></div>

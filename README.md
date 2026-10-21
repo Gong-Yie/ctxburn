@@ -39,9 +39,19 @@ ctxburn report run.jsonl -o report.html
 
 Open `report.html`. No server, no upload, no account.
 
-Works with the `openai` and `anthropic` Python SDKs. Streaming is captured for
-OpenAI when you pass `stream_options={"include_usage": True}`; otherwise streamed
-calls are skipped with a warning instead of being guessed at.
+Works with three endpoints: `openai` chat completions, `openai` **responses**
+(the format OpenAI now recommends, including streamed runs), and `anthropic`
+messages.
+
+Streaming is captured for chat completions when you pass
+`stream_options={"include_usage": True}`; otherwise those calls are skipped with
+a warning instead of being guessed at. Responses streaming is captured from the
+final `response.completed` event.
+
+One case it refuses to fake: if you use `previous_response_id` or `conversation`,
+the history lives on the server, so the request body only carries the new turn
+while usage still bills the whole thing. The per-segment split is not
+attributable there, so those calls get a note and the report shows a banner.
 
 No API key? Kick the tires on the bundled synthetic run:
 

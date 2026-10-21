@@ -45,6 +45,7 @@ class Call:
     latency_ms: float = 0.0
     ts: float = field(default_factory=time.time)
     error: str | None = None
+    note: str | None = None
 
     def to_json(self) -> dict:
         return asdict(self)
