@@ -160,18 +160,7 @@ your system prompt versus the tool result you pasted in at turn 3. So:
 3. `cached_tokens` is spread across the replayed pieces by weight, and reported
    separately — it is a billing discount, not a different amount of context.
 
-## Tokens, not dollars
-
-ctxburn does not show money. That is on purpose.
-
-A dollar figure needs a price table, a price table goes stale, and a stale price
-table turns a guess into something that looks like a measurement. The token counts
-here come from the provider's own `usage` field — they are quoted, not modelled.
-
-If you want cost, multiply by your own rate. `ctxburn report --json` gives you the
-full per-call and per-kind breakdown.
-
-## Honest limitations
+## Limitations
 
 - The split *between* pieces is estimated; only the per-call total is authoritative.
 - Text is stored verbatim in the trace by default (it is how replay is detected).

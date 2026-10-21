@@ -134,15 +134,7 @@ provider 每次调用会报 `usage.input_tokens`，但不会告诉你这里面�
 
 `kind` 的五个值（system / tools / user / assistant / tool）保留英文，因为它们就是 trace 文件里的字段名，翻译了反而对不上。
 
-## 只报 token，不报钱
-
-ctxburn 不显示金额。这是故意的。
-
-要显示美元就得有一张价格表，价格表会过期，而过期的价格表会把一个猜测包装成看起来像测量结果的东西。这里的 token 数来自 provider 自己的 `usage` 字段，是引用来的，不是建模算的。
-
-想看钱，你自己乘一下单价。`ctxburn report --json` 会把每次调用、每个种类的明细全给你。
-
-## 老实说的限制
+## 限制
 
 - 块与块之间的拆分是估算的；只有每次调用的总数是权威值。
 - trace 默认原样保存文本（重发检测靠的就是全文）。想瘦身或规避隐私，用 `ctxburn.watch(..., keep_content=False)`，正文会被截到 400 字符。
