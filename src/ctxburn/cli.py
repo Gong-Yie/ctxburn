@@ -48,6 +48,14 @@ def cmd_report(args: argparse.Namespace) -> int:
     for kind, (tokens, cost, rep) in sorted(report.by_kind.items(), key=lambda kv: -kv[1][1]):
         share = rep / tokens if tokens else 0
         print(f"  {kind:<10} {int(tokens):>8,} tok  {_money(cost):>8}  {share:>4.0%} replay")
+    if report.top_segments:
+        print()
+        print("  heaviest pieces")
+        for s in report.top_segments[:5]:
+            print(
+                f"  {s['kind']:<10} {int(s['tokens']):>8,} tok  {s['sends']}x  "
+                f"{_money(s['cost']):>8}  {s['preview'][:46]}"
+            )
     print()
     print(f"→ {args.out}")
     return 0

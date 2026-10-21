@@ -29,6 +29,32 @@ def test_openai_two_tool_calls_get_distinct_keys():
     assert a[0].key != b[0].key
 
 
+def test_tools_split_per_tool():
+    tools = [
+        {"type": "function", "function": {"name": "a", "parameters": {"type": "object"}}},
+        {"type": "function", "function": {"name": "b", "parameters": {"type": "object"}}},
+    ]
+    segs = segments_from_openai([{"role": "user", "content": "hi"}], tools)
+    tool_segs = [s for s in segs if s.kind == "tools"]
+    assert len(tool_segs) == 2
+    assert tool_segs[0].key != tool_segs[1].key
+    assert '"name": "a"' in tool_segs[0].text
+    assert '"name": "b"' not in tool_segs[0].text
+
+
+def test_same_tool_fingerprints_the_same_across_sdks():
+    """A tool described identically must land on one segment, whichever SDK sent it."""
+    a = segments_from_anthropic(
+        [], None, [{"name": "read", "input_schema": {"type": "object"}}]
+    )
+    b = segments_from_openai(
+        [],
+        [{"type": "function", "function": {"name": "read", "input_schema": {"type": "object"}}}],
+    )
+    assert len(a) == len(b) == 1
+    assert a[0].key == b[0].key
+
+
 def test_anthropic_system_string_and_tool_result():
     segs = segments_from_anthropic(
         [

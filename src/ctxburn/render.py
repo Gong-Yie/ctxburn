@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from html import escape
 
 from .analyze import Report
 
@@ -47,6 +48,20 @@ def render_html(report: Report, title: str | None = None) -> str:
         for k, v in kinds
     )
     winnable = r.cost_replay + r.cost_cached
+
+    def _top_row(s: dict) -> str:
+        hue = _HUE.get(s["kind"], 0)
+        return (
+            f'<tr><td><span class="dot" style="background:hsl({hue} 70% 55%)"></span>'
+            f'<code>{s["kind"]}</code> <span class="dim">{escape(s["preview"])}</span></td>'
+            f'<td class="num">{int(s["tokens"]):,}</td>'
+            f'<td class="num">{s["sends"]}×</td>'
+            f'<td class="num">{s["replays"]}×</td>'
+            f'<td class="num">{s["cost"]:.4f}</td>'
+            f"</tr>"
+        )
+
+    top_rows = "".join(_top_row(s) for s in r.top_segments)
     html = _TEMPLATE
     html = html.replace("__SUMMARY__", summary_line(r))
     html = html.replace("__TITLE__", headline)
@@ -59,6 +74,7 @@ def render_html(report: Report, title: str | None = None) -> str:
     html = html.replace("__GROWTH__", f"{r.context_growth:.1f}x")
     html = html.replace("__INTOK__", f"{r.total_input_tokens:,}")
     html = html.replace("__KINDROWS__", kind_rows)
+    html = html.replace("__TOP_ROWS__", top_rows)
     html = html.replace("__DATA__", payload.replace("</", "<\\/"))
     return html
 
@@ -105,6 +121,7 @@ _TEMPLATE = """<!doctype html>
     background:#05070a;border:1px solid var(--line);border-radius:7px;padding:7px 10px;
     font-size:12px;max-width:420px;z-index:9;box-shadow:0 8px 24px #0009}
   #tip b{color:var(--fresh)}
+  .dim{color:var(--dim)}
   footer{margin-top:44px;color:#5c6779;font-size:12px}
   code{font-family:ui-monospace,Menlo,monospace;color:#c9d4e2}
 </style></head><body><div class="wrap">
@@ -132,6 +149,14 @@ _TEMPLATE = """<!doctype html>
     <div class="card"><table>
       <thead><tr><th>kind</th><th class="num">tokens sent</th><th class="num">cost</th><th class="num">replay</th></tr></thead>
       <tbody>__KINDROWS__</tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>heaviest text in the run <span style="text-transform:none;letter-spacing:0">— the pieces worth fixing first</span></h2>
+    <div class="card"><table>
+      <thead><tr><th>piece</th><th class="num">tokens sent</th><th class="num">calls</th><th class="num">replays</th><th class="num">cost</th></tr></thead>
+      <tbody>__TOP_ROWS__</tbody>
     </table></div>
   </section>
 

@@ -54,10 +54,23 @@ def _text_of(content) -> str:
     return str(content)
 
 
-def segments_from_openai(messages: list[dict], tools: list[dict] | None) -> list[Segment]:
+def _tool_segments(tools) -> list[Segment]:
+    """One segment per tool, not one blob.
+
+    Tool schemas are re-sent verbatim on every turn and are often the largest
+    single repeated cost in an agent run. Splitting them means the report can
+    point at the one tool whose description is expensive, instead of hiding the
+    whole set behind a single `tools` bar.
+    """
     segs: list[Segment] = []
-    if tools:
-        segs.append(Segment("tools", json.dumps(tools, sort_keys=True, ensure_ascii=False)))
+    for t in tools or []:
+        body = t["function"] if isinstance(t, dict) and isinstance(t.get("function"), dict) else t
+        segs.append(Segment("tools", json.dumps(body, sort_keys=True, ensure_ascii=False)))
+    return segs
+
+
+def segments_from_openai(messages: list[dict], tools: list[dict] | None) -> list[Segment]:
+    segs: list[Segment] = _tool_segments(tools)
     for m in messages:
         role = m.get("role", "user")
         body = _text_of(m.get("content"))
@@ -78,8 +91,7 @@ def segments_from_anthropic(
     segs: list[Segment] = []
     if system:
         segs.append(Segment("system", _text_of(system)))
-    if tools:
-        segs.append(Segment("tools", json.dumps(tools, sort_keys=True, ensure_ascii=False)))
+    segs.extend(_tool_segments(tools))
     for m in messages:
         role = m.get("role", "user")
         kind = "assistant" if role == "assistant" else "user"

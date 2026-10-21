@@ -53,6 +53,7 @@ class Report:
     total_output_tokens: int
     total_cached_tokens: int
     by_kind: dict[str, list[float]]  # kind -> [tokens, cost, replay_tokens]
+    top_segments: list[dict]  # heaviest single pieces of text, across the whole run
     priced_estimate: bool
 
     @property
@@ -92,6 +93,7 @@ class Report:
             "context_growth": self.context_growth,
             "n_calls": self.n_calls,
             "by_kind": self.by_kind,
+            "top_segments": self.top_segments,
             "priced_estimate": self.priced_estimate,
             "calls": [
                 {
@@ -152,6 +154,7 @@ def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
     seen: dict[str, int] = {}
     calls: list[CallCost] = []
     by_kind: dict[str, list[float]] = {}
+    agg: dict[str, dict] = {}
 
     for idx, call in enumerate(trace.calls):
         price = overrides.get(call.model) or lookup(call.model)
@@ -198,6 +201,22 @@ def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
             bucket[0] += t
             bucket[1] += cost
             bucket[2] += t if is_replay else 0
+            a = agg.setdefault(
+                seg.key,
+                {
+                    "kind": seg.kind,
+                    "tokens": 0,
+                    "cost": 0.0,
+                    "sends": 0,
+                    "replays": 0,
+                    "preview": _preview(seg.text),
+                    "first_seen_at": first,
+                },
+            )
+            a["tokens"] += t
+            a["cost"] += cost
+            a["sends"] += 1
+            a["replays"] += 1 if is_replay else 0
             segs.append(
                 SegCost(
                     kind=seg.kind,
@@ -243,5 +262,6 @@ def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
         total_output_tokens=sum(c.output_tokens for c in calls),
         total_cached_tokens=sum(c.cached_tokens for c in calls),
         by_kind=by_kind,
+        top_segments=sorted(agg.values(), key=lambda a: -a["cost"])[:8],
         priced_estimate=any((overrides.get(c.model) or lookup(c.model)).estimated for c in calls),
     )
