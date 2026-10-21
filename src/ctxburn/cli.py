@@ -33,11 +33,11 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
         return 0
 
-    html = render_html(report)
+    html = render_html(report, lang=args.lang)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)
 
-    print(summary_line(report))
+    print(summary_line(report, args.lang))
     for n in report.notes:
         print(f"  ! {n}")
     print()
@@ -67,7 +67,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(args.root))
     from examples.mock_run import build  # type: ignore
 
-    trace = build()
+    trace = build(lang=args.lang)
     trace.save(args.out)
     print(f"→ {args.out} ({len(trace.calls)} calls)")
     return 0
@@ -83,11 +83,15 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("-o", "--out", default="ctxburn-report.html")
     rp.add_argument("--set-price", action="append", default=[], metavar="MODEL=IN,OUT,CACHED")
     rp.add_argument("--json", action="store_true", help="print the report as JSON instead")
+    rp.add_argument("--lang", choices=["en", "zh"], default="en", help="report language")
     rp.set_defaults(func=cmd_report)
 
     dp = sub.add_parser("demo", help="write the synthetic example trace")
     dp.add_argument("-o", "--out", default="ctxburn-demo.jsonl")
     dp.add_argument("--root", default=".", help=argparse.SUPPRESS)
+    dp.add_argument(
+        "--lang", choices=["en", "zh"], default="en", help="language of the synthetic run"
+    )
     dp.set_defaults(func=cmd_demo)
 
     args = p.parse_args(argv)

@@ -1,5 +1,7 @@
 # ctxburn
 
+English | [中文](README_CN.md)
+
 **Where your agent's token budget actually goes.** Not what it did — what it paid to say it.
 
 A 8-turn coding agent re-sends its system prompt, its tool schemas, and its entire
