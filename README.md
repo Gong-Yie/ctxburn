@@ -1,185 +1,154 @@
 # ctxburn
 
-English | [中文](README_CN.md)
+[English](README_EN.md) | 中文
 
-**Where an agent's context window actually goes.** Not what it did — how much of what it sent had already been sent.
+**agent 每一轮都在把之前说过的话再说一遍。ctxburn 告诉你这件事占了多少。**
 
-An 8-turn coding agent re-sends its system prompt, its tool schemas and its entire message history on every single turn. That is not a bug, it is how the API works. It is also, usually, the majority of what you pay for.
+一个跑了八轮的 coding agent，每一轮都会把 system prompt、几十个工具的描述、以及此前全部的消息历史，原封不动地重发一次。这不是谁写错了代码，这是 API 的工作方式。它通常也是你付钱的大头。
 
-`ctxburn` records a run, splits every call's input tokens into **fresh** and **replay**, and drops the result into a single HTML file you can open offline.
+`ctxburn` 记录一次运行，把每次调用的输入 token 拆成**首次发送**和**重发**，然后生成一个离线能打开的单文件 HTML。
 
 ![report](assets/report.png)
 
 ```
-81% of all input tokens were re-sends of text the agent had already sent. 6 calls, 1.4x context growth.
+所有输入 token 里有 81% 是在重发之前已经发过的内容。6 次调用，上下文增长到 1.5x。
 ```
 
-## Install
+## 安装
 
 ```bash
-pip install ctxburn          # or: uvx ctxburn
+pip install ctxburn          # 或者：uvx ctxburn
 ```
 
-Zero dependencies. Python 3.10+.
+零依赖。Python 3.10 及以上。
 
-## Use it in 30 seconds
+## 两种接入方式
+
+### 一、Python 项目：import 一下
 
 ```python
 import ctxburn
 
-ctxburn.watch("run.jsonl")   # patch the openai + anthropic clients
+ctxburn.watch("run.jsonl")   # 挂到 openai 和 anthropic 客户端上
 
-# ... your agent runs completely unchanged ...
+# ……你的 agent 照常跑，一行都不用改……
 ```
 
 ```bash
 ctxburn report run.jsonl -o report.html
 ```
 
-Open `report.html`. No server, no upload, no account.
+打开 `report.html`。不用起服务，不用上传，不用注册。
 
-Works with three endpoints: `openai` chat completions, `openai` **responses**
-(the format OpenAI now recommends, including streamed runs), and `anthropic`
-messages.
+### 二、其他任何语言：走代理
 
-Streaming is captured for chat completions when you pass
-`stream_options={"include_usage": True}`; otherwise those calls are skipped with
-a warning instead of being guessed at. Responses streaming is captured from the
-final `response.completed` event.
-
-One case it refuses to fake: if you use `previous_response_id` or `conversation`,
-the history lives on the server, so the request body only carries the new turn
-while usage still bills the whole thing. The per-segment split is not
-attributable there, so those calls get a note and the report shows a banner.
-
-No API key? Kick the tires on the bundled synthetic run:
+`watch()` 得被 import，所以只对 Python 有效。Node 写的 agent、Go 写的服务、Claude Code、Codex，都走这条：
 
 ```bash
-ctxburn demo -o demo.jsonl && ctxburn report demo.jsonl -o demo.html
-```
-
-## Any language, via a proxy
-
-`ctxburn.watch()` needs to be imported, so it only works in Python. For
-everything else — a Node agent, a Go service, Claude Code, Codex — run the
-recording proxy and point the client at it:
-
-```bash
-ctxburn serve -o run.jsonl          # listens on 127.0.0.1:8787
+ctxburn serve -o run.jsonl          # 只监听 127.0.0.1:8787
 
 # Claude Code
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 claude
 
-# anything OpenAI-compatible, in any language
+# 任何 OpenAI 兼容客户端，任何语言
 export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
 ```
 
-The client keeps talking the same protocol; only the hostname changed. The proxy
-routes `/v1/messages` to Anthropic and `/v1/chat/completions` plus `/v1/responses`
-to OpenAI, forwards your auth header untouched, and reassembles usage out of
-server-sent-events streams as they pass through.
+客户端说的还是原来那套协议，只是 hostname 变了。代理把 `/v1/messages` 送去 Anthropic，把 `/v1/chat/completions` 和 `/v1/responses` 送去 OpenAI，鉴权头原样透传，流式响应边转发边从 SSE 事件里把 usage 拼出来。
 
-Two details that make this work without touching the client:
+两个让它不用改客户端的细节：流式的 chat completions 默认不报 usage，代理会在转发时替你把 `stream_options.include_usage` 补上；记录发生在响应交还之前，所以调用一返回就去读 trace 文件，读到的已经是完整的。
 
-- Streamed chat completions usually omit usage. The proxy adds
-  `stream_options.include_usage` to the request on the way through, so the
-  provider reports it and no client code changes.
-- Recording happens *before* the response is handed back, so a trace file read
-  right after a call returns is complete.
-
-Point it elsewhere with `--openai-base` / `--anthropic-base` — Azure, a gateway,
-a local model server — and `--default openai` if your client uses paths the
-router does not recognise.
+上游可以换，中转站、Azure、本地模型服务都行：
 
 ```bash
 ctxburn serve -o run.jsonl --openai-base https://my-gateway.internal/v1
 ```
 
-## Four ways to look at the same run
+### 支持的端点
 
-Switch inside the page; `--chart` picks which one it opens on.
+- `openai` chat completions
+- `openai` **responses**（OpenAI 现在推荐的那个格式，含流式）
+- `anthropic` messages
 
-| view | what it shows | answers |
+chat completions 的流式要带 `stream_options={"include_usage": True}` 才会被记录，否则跳过并警告，不猜。responses 的流式从收尾的 `response.completed` 事件里取 usage。
+
+有一种情况它不装：用了 `previous_response_id` 或 `conversation` 时，历史存在服务端，请求体只带新的一轮，但 usage 照样按整个历史计费。这种调用没法做分段归因，所以会打上标记，报告顶部挂一条提示，而不是编一个数出来。
+
+### 没有 API key 也想看
+
+```bash
+ctxburn demo -o demo.jsonl && ctxburn report demo.jsonl -o demo.html
+```
+
+## 四种看法，同一份数据
+
+页面里点着切；`--chart` 决定打开时停在哪个。
+
+| 视图 | 画的是什么 | 回答什么 |
 |---|---|---|
-| **flame** | one row per call, width is tokens, dim is replay | what each turn's context was made of |
-| **bars** | one column per call, stacked by kind, dim is replay | how the total grows, and which kind drives it |
-| **lines** | total input vs freshly added tokens, per call | the shape of the growth — total climbs, new stays flat |
-| **donut** | every input token, by kind | who owns the bill at a glance |
+| **火焰图 flame** | 一行一次调用，宽度是 token，暗色是重发 | 每一轮的上下文由什么组成 |
+| **柱状图 bars** | 一列一次调用，按种类堆叠，暗色是重发 | 总量怎么涨的，涨的是哪一类 |
+| **折线图 lines** | 每次调用的输入总量 与 新增量 | 增长是什么形状——总量往上爬，新增几乎平着 |
+| **饼图 donut** | 所有输入 token 按种类的分布 | 谁在付账，一眼看完 |
 
 ```bash
 ctxburn report run.jsonl --chart line
 ```
 
-The line view is the one to show people: the two curves start together and then
-separate, and the widening gap is the replay tax drawn as a shape.
+折线图是最适合拿给人看的那张：两条线从同一个点出发，然后分开，缺口越拉越大。那道口子就是重发的量，被画成了形状。
 
-## What the numbers mean
+## 这些数字是什么意思
 
-For every LLM call, `ctxburn` walks the context it sent and asks one question per
-piece: *have I seen this exact text in an earlier call of this run?*
+对每一次 LLM 调用，`ctxburn` 翻一遍它发出去的上下文，对每一块问同一个问题：*这段文字，在这次运行的前面出现过没有？*
 
-| term | meaning |
+| 词 | 含义 |
 |---|---|
-| **fresh** | tokens sent for the first time. The only input you had to send. |
-| **replay** | tokens that were already sent in an earlier call and are being sent again. |
-| **cached** | replay tokens the provider billed at the discounted prefix-cache rate. A subset of replay. |
+| **fresh（首次）** | 第一次发送的 token。只有这部分是真的新内容。 |
+| **replay（重发）** | 之前某次调用里已经发过，现在又发了一遍的 token。 |
+| **cached（命中缓存）** | 重发里被 provider 按前缀缓存折扣计费的那部分，是重发的子集。 |
 
-Replay is not automatically waste — some of it is unavoidable, and caching makes
-much of it cheap. But you cannot optimize what you cannot see, and a 60–90% replay
-share is the normal starting point for a long agent loop.
+重发不等于浪费——有些躲不掉，而且缓存能让其中很大一部分变便宜。但你没法优化看不见的东西。一条长 agent 循环的重发占比，正常起点就是 60% 到 90%。
 
-## Why not a tracing tool
+## 为什么不直接用 tracing 工具
 
-Tracing tools answer *"what happened at 14:03"*. They render a timeline and let you
-click a span. With 400 spans you can find the slow one.
+tracing 工具回答的是「14:03 那一秒发生了什么」。它给你一条时间线，让你点开某个 span。有 400 个 span 的时候，你找得到慢的那一个。
 
-They do not answer *"how much of this run was the same 900-token preamble, 40 times"*.
-That is an aggregation question, and aggregation needs a different view. CPUs had
-the same problem, and the flame graph solved it.
+它不回答「这次运行里，那段 900 token 的前言，被重复发了 40 次，一共多少 token」。这是个聚合问题，聚合需要另一种视图。CPU 早就遇到过同样的问题，火焰图是那时的答案。
 
-| tool | question it answers |
+| 工具 | 回答什么 |
 |---|---|
-| Langfuse / Phoenix / LangSmith | what happened on turn 7 |
-| [agentpprof](https://github.com/eunomia-bpf/agentsight) | which *kind of task* burned the budget across many runs |
-| **ctxburn** | which part of *this context* is being re-sent, and how much |
+| Langfuse / Phoenix / LangSmith | 第 7 轮发生了什么 |
+| [agentpprof](https://github.com/eunomia-bpf/agentsight) | 跨很多次运行，哪*一类任务*吃掉了预算 |
+| **ctxburn** | *这次*上下文里哪一块被重复发送了，多少 |
 
-ctxburn is complementary: it eats the same call stream and only cares about the
-composition of each request.
+ctxburn 是补充关系：它吃同一份调用流，只关心每次请求的构成。
 
-## How the split is computed
+## 拆分是怎么算出来的
 
-Providers report `usage.input_tokens` per call; they do not report how much of it was
-your system prompt versus the tool result you pasted in at turn 3. So:
+provider 每次调用会报 `usage.input_tokens`，但不会告诉你这里面多少是你的 system prompt，多少是第三轮贴进去的那段工具结果。所以：
 
-1. Every context piece is fingerprinted by content (`kind` + text, blake2b).
-   First sighting in the run → fresh. Any later sighting → replay.
-2. Piece sizes are estimated by a dependency-free estimator (ASCII ≈ 4 chars/token,
-   CJK ≈ 1.6 chars/token) and then **scaled so they sum exactly to the provider's
-   reported total**. The whole is exact, the split is approximate.
-3. `cached_tokens` is spread across the replayed pieces by weight, and reported
-   separately — it is a billing discount, not a different amount of context.
+1. **取指纹**。每一块上下文按内容算一个指纹（`kind` + 全文，blake2b）。整次运行里第一次见到算 fresh，之后再出现都算 replay。
+2. **估体量再校准**。每块的大小用一套无依赖的估算器算（ASCII 约 4 字符一 token，中日韩约 1.6 字符一 token），然后等比缩放，**让它们加起来正好等于 provider 报的总数**。整体是准的，拆分是估的。
+3. **摊缓存**。`cached_tokens` 按重发块的大小加权摊到各段上，单独列出来——它是计费折扣，不是另一种上下文。
 
-## Tokens, not dollars
+`kind` 的五个值（system / tools / user / assistant / tool）保留英文，因为它们就是 trace 文件里的字段名，翻译了反而对不上。
 
-ctxburn does not show money. That is on purpose.
+## 只报 token，不报钱
 
-A dollar figure needs a price table, a price table goes stale, and a stale price
-table turns a guess into something that looks like a measurement. The token counts
-here come from the provider's own `usage` field — they are quoted, not modelled.
+ctxburn 不显示金额。这是故意的。
 
-If you want cost, multiply by your own rate. `ctxburn report --json` gives you the
-full per-call and per-kind breakdown.
+要显示美元就得有一张价格表，价格表会过期，而过期的价格表会把一个猜测包装成看起来像测量结果的东西。这里的 token 数来自 provider 自己的 `usage` 字段，是引用来的，不是建模算的。
 
-## Honest limitations
+想看钱，你自己乘一下单价。`ctxburn report --json` 会把每次调用、每个种类的明细全给你。
 
-- The split *between* pieces is estimated; only the per-call total is authoritative.
-- Text is stored verbatim in the trace by default (it is how replay is detected).
-  Use `ctxburn.watch(..., keep_content=False)` to truncate bodies to 400 chars.
-- One trace = one run. Cross-run aggregation is deliberately out of scope.
-- `watch()` only covers the Python SDKs. Everything else goes through
-  `ctxburn serve`, which sees exactly what crosses the wire — if a client keeps
-  the history server-side, there is nothing to attribute and it says so.
+## 老实说的限制
+
+- 块与块之间的拆分是估算的；只有每次调用的总数是权威值。
+- trace 默认原样保存文本（重发检测靠的就是全文）。想瘦身或规避隐私，用 `ctxburn.watch(..., keep_content=False)`，正文会被截到 400 字符。
+- 一份 trace 对应一次运行，跨运行聚合是刻意不做的。
+- `watch()` 只覆盖 Python SDK。其余走 `ctxburn serve`，它只看得见真正过网的那些字节——如果客户端把历史放在服务端，就没有东西可归因，报告会直说。
+- 代理只监听回环地址，不转发到除上游以外的任何地方。但它能看到明文请求体，所以别在不受信任的机器上跑。
 
 ## License
 
