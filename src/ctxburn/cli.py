@@ -59,6 +59,21 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from .proxy import serve
+
+    serve(
+        port=args.port,
+        out=args.out,
+        openai_base=args.openai_base,
+        anthropic_base=args.anthropic_base,
+        default=args.default,
+        name=args.name,
+        quiet=args.quiet,
+    )
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(args.root))
     from examples.mock_run import build  # type: ignore
@@ -83,6 +98,23 @@ def main(argv: list[str] | None = None) -> int:
         "--chart", choices=list(CHARTS), default="flame", help="default chart to open on"
     )
     rp.set_defaults(func=cmd_report)
+
+    sp = sub.add_parser(
+        "serve", help="run a recording proxy so agents in any language can be profiled"
+    )
+    sp.add_argument("-p", "--port", type=int, default=8787)
+    sp.add_argument("-o", "--out", default="ctxburn-trace.jsonl")
+    sp.add_argument("--openai-base", default="https://api.openai.com", metavar="URL")
+    sp.add_argument("--anthropic-base", default="https://api.anthropic.com", metavar="URL")
+    sp.add_argument(
+        "--default",
+        choices=["anthropic", "openai"],
+        default="anthropic",
+        help="upstream for paths the router does not recognise",
+    )
+    sp.add_argument("--name", default="proxy", help="trace name")
+    sp.add_argument("-q", "--quiet", action="store_true", help="no per-request logging")
+    sp.set_defaults(func=cmd_serve)
 
     dp = sub.add_parser("demo", help="write the synthetic example trace")
     dp.add_argument("-o", "--out", default="ctxburn-demo.jsonl")

@@ -58,6 +58,44 @@ No API key? Kick the tires on the bundled synthetic run:
 ctxburn demo -o demo.jsonl && ctxburn report demo.jsonl -o demo.html
 ```
 
+## Any language, via a proxy
+
+`ctxburn.watch()` needs to be imported, so it only works in Python. For
+everything else — a Node agent, a Go service, Claude Code, Codex — run the
+recording proxy and point the client at it:
+
+```bash
+ctxburn serve -o run.jsonl          # listens on 127.0.0.1:8787
+
+# Claude Code
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+claude
+
+# anything OpenAI-compatible, in any language
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
+```
+
+The client keeps talking the same protocol; only the hostname changed. The proxy
+routes `/v1/messages` to Anthropic and `/v1/chat/completions` plus `/v1/responses`
+to OpenAI, forwards your auth header untouched, and reassembles usage out of
+server-sent-events streams as they pass through.
+
+Two details that make this work without touching the client:
+
+- Streamed chat completions usually omit usage. The proxy adds
+  `stream_options.include_usage` to the request on the way through, so the
+  provider reports it and no client code changes.
+- Recording happens *before* the response is handed back, so a trace file read
+  right after a call returns is complete.
+
+Point it elsewhere with `--openai-base` / `--anthropic-base` — Azure, a gateway,
+a local model server — and `--default openai` if your client uses paths the
+router does not recognise.
+
+```bash
+ctxburn serve -o run.jsonl --openai-base https://my-gateway.internal/v1
+```
+
 ## Four ways to look at the same run
 
 Switch inside the page; `--chart` picks which one it opens on.
@@ -139,8 +177,9 @@ full per-call and per-kind breakdown.
 - Text is stored verbatim in the trace by default (it is how replay is detected).
   Use `ctxburn.watch(..., keep_content=False)` to truncate bodies to 400 chars.
 - One trace = one run. Cross-run aggregation is deliberately out of scope.
-- Python only. A Node or Go agent is invisible to it; that is what a proxy mode
-  would solve, and it is not built yet.
+- `watch()` only covers the Python SDKs. Everything else goes through
+  `ctxburn serve`, which sees exactly what crosses the wire — if a client keeps
+  the history server-side, there is nothing to attribute and it says so.
 
 ## License
 

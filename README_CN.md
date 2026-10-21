@@ -50,6 +50,34 @@ chat completions 的流式要带 `stream_options={"include_usage": True}` 才会
 ctxburn demo -o demo.jsonl --lang zh && ctxburn report demo.jsonl -o demo.html --lang zh
 ```
 
+## 其他语言：走代理
+
+`ctxburn.watch()` 得被 import，所以只能用在 Python 里。别的一律走代理——Node 写的 agent、Go 写的服务、Claude Code、Codex，都行：
+
+```bash
+ctxburn serve -o run.jsonl          # 监听 127.0.0.1:8787
+
+# Claude Code
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+claude
+
+# 任何 OpenAI 兼容的客户端，任何语言
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
+```
+
+客户端说的还是原来那套协议，只是 hostname 变了。代理把 `/v1/messages` 送到 Anthropic，把 `/v1/chat/completions` 和 `/v1/responses` 送到 OpenAI，鉴权头原样透传，流式响应边转发边把 usage 拼出来。
+
+两个让它不用改客户端的细节：
+
+- 流式的 chat completions 一般不带 usage。代理在转发时会给请求补上 `stream_options.include_usage`，这样 provider 就会报，客户端一行都不用动。
+- 记录发生在响应交还**之前**，所以调用一返回就去读 trace 文件，是完整的。
+
+换上游用 `--openai-base` / `--anthropic-base`——Azure、中转站、本地模型服务都行；客户端如果用了路由认不出的路径，加 `--default openai`。
+
+```bash
+ctxburn serve -o run.jsonl --openai-base https://my-gateway.internal/v1
+```
+
 ## 四种看法，同一份数据
 
 页面里点着切；`--chart` 决定打开时停在哪个。
@@ -116,7 +144,7 @@ ctxburn 不显示金额。这是故意的。
 - 块与块之间的拆分是估算出来的；只有每次调用的总数是权威值。
 - trace 默认原样保存文本（重发检测靠的就是全文）。想瘦身或规避隐私，用 `ctxburn.watch(..., keep_content=False)`，正文会被截到 400 字符。
 - 一份 trace 对应一次运行，跨运行聚合是刻意不做的。
-- 只支持 Python。Node 或 Go 写的 agent 现在看不见，那得靠代理模式，还没做。
+- `watch()` 只覆盖 Python SDK。其余的都走 `ctxburn serve`，它只看得见真正过网的那些字节——如果客户端把历史放在服务端，那就没有东西可归因，报告会直说。
 
 ## License
 
