@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ctxburn"
+version = "0.1.0"
+description = "See where an agent's token budget actually goes. Context replay tax, per turn, as a flame graph."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "gongyi" }]
+keywords = ["llm", "agents", "profiler", "flamegraph", "tokens", "cost", "observability"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Debuggers",
+  "Topic :: System :: Monitoring",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+ctxburn = "ctxburn.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ctxburn"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "BLE001", # optional SDK imports can raise anything
+  "SIM102", # nested ifs in the price prefix match read better
+  "SIM114", # same
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/ctxburn/render.py" = ["E501"] # inline HTML/CSS/JS template
