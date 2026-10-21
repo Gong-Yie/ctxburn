@@ -104,14 +104,33 @@ your system prompt versus the tool result you pasted in at turn 3. So:
 2. Piece sizes are estimated by a dependency-free estimator (ASCII ≈ 4 chars/token,
    CJK ≈ 1.6 chars/token) and then **scaled so they sum exactly to the provider's
    reported total**. The whole is exact, the split is approximate.
-3. Each piece is priced with a built-in price table (`src/ctxburn/pricing.py`),
+3. Each piece is priced with the built-in table (`src/ctxburn/pricing.py`),
    honoring `cached_tokens` at the discounted rate.
 
-Override prices for anything newer than the table:
+### Where the prices come from
+
+Ask the tool:
 
 ```bash
-ctxburn report run.jsonl --set-price "my-model-2027=1.0,4.0,0.1"
+ctxburn prices
 ```
+
+That prints every rate with its snapshot date and source. The current table is a
+2026-10-22 snapshot read from [models.dev](https://models.dev/api.json), vendor
+entries only, in $ per 1M tokens.
+
+A snapshot goes stale. When a model is not in the table, ctxburn falls back to a
+default rate and says so in the report footer rather than quietly inventing a
+number. Fix it per run or wholesale:
+
+```bash
+ctxburn report run.jsonl --set-price "my-model=1.0,4.0,0.1"
+ctxburn report run.jsonl --prices my-prices.json
+```
+
+One property worth knowing: the replay **ratio** does not depend on prices,
+because fresh and replayed tokens are billed at the same input rate. A wrong
+table moves the dollar figures, not the share.
 
 ## Honest limitations
 

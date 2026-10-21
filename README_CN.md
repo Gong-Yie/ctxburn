@@ -84,11 +84,25 @@ provider 每次调用会报 `usage.input_tokens`，但不会告诉你这里面�
 2. 每块的体量用一套无依赖的估算器算（ASCII 约 4 字符一 token，中日韩约 1.6 字符一 token），然后**等比缩放，让它们加起来正好等于 provider 报的总数**。整体是准的，拆分是估的。
 3. 每块按内置价格表计价（`src/ctxburn/pricing.py`），`cached_tokens` 按折扣价单独算。
 
-价格表跟不上新模型的时候，自己覆盖：
+### 价格是哪来的
+
+问工具本身：
 
 ```bash
-ctxburn report run.jsonl --set-price "my-model-2027=1.0,4.0,0.1"
+ctxburn prices
 ```
+
+它会列出每一条价格、快照日期和来源。现在这张表是 2026-10-22 的快照，从
+[models.dev](https://models.dev/api.json) 的厂商条目读的，单位是每百万 token 的美元。
+
+快照会过期。表里没有的模型会退回一个默认价，并且**在报告页脚写明**，不会偷偷编一个数。要改，单次或整体改都行：
+
+```bash
+ctxburn report run.jsonl --set-price "my-model=1.0,4.0,0.1"
+ctxburn report run.jsonl --prices my-prices.json
+```
+
+有件事值得知道：重发**占比**和价格无关，因为首次发送和重发都按同一个输入单价计费。价格表错了，错的是美元数字，不是那个百分比。
 
 `kind` 的五个值（system / tools / user / assistant / tool）在中文报告里也保留英文，因为它们就是 trace 文件里的字段名，翻译了反而对不上。
 

@@ -9,7 +9,7 @@ import sys
 from . import __version__
 from .analyze import analyze
 from .model import Trace
-from .pricing import parse_override
+from .pricing import AS_OF, SOURCE, TABLE, load_prices, parse_override
 from .render import render_html, summary_line
 
 
@@ -24,7 +24,8 @@ def _money(v: float) -> str:
 def cmd_report(args: argparse.Namespace) -> int:
     trace = Trace.load(args.trace)
     overrides = dict(parse_override(s) for s in args.set_price)
-    report = analyze(trace, overrides)
+    table = load_prices(args.prices) if args.prices else None
+    report = analyze(trace, overrides, table)
     if not report.n_calls:
         print(f"no calls in {args.trace}", file=sys.stderr)
         return 1
@@ -63,6 +64,19 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prices(args: argparse.Namespace) -> int:
+    print(f"snapshot {AS_OF}")
+    print(f"source   {SOURCE}")
+    print()
+    print(f"  {'model':<22}{'input':>9}{'output':>9}{'cached':>9}   ($ per 1M tokens)")
+    for name, (i, o, c) in sorted(TABLE.items()):
+        print(f"  {name:<22}{i:>9.2f}{o:>9.2f}{c:>9.3f}")
+    print()
+    print("override per-run with --set-price MODEL=IN,OUT,CACHED")
+    print("or wholesale with --prices FILE.json")
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(args.root))
     from examples.mock_run import build  # type: ignore
@@ -82,9 +96,15 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("trace", help="trace .jsonl produced by ctxburn run")
     rp.add_argument("-o", "--out", default="ctxburn-report.html")
     rp.add_argument("--set-price", action="append", default=[], metavar="MODEL=IN,OUT,CACHED")
+    rp.add_argument(
+        "--prices", metavar="FILE.json", help="price file to merge over the built-in table"
+    )
     rp.add_argument("--json", action="store_true", help="print the report as JSON instead")
     rp.add_argument("--lang", choices=["en", "zh"], default="en", help="report language")
     rp.set_defaults(func=cmd_report)
+
+    pp = sub.add_parser("prices", help="show the built-in price table and where it came from")
+    pp.set_defaults(func=cmd_prices)
 
     dp = sub.add_parser("demo", help="write the synthetic example trace")
     dp.add_argument("-o", "--out", default="ctxburn-demo.jsonl")

@@ -156,7 +156,11 @@ def _split_tokens(segments: list[Segment], reported: int) -> list[int]:
     return out
 
 
-def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
+def analyze(
+    trace: Trace,
+    overrides: dict[str, Price] | None = None,
+    table: dict[str, tuple[float, float, float]] | None = None,
+) -> Report:
     overrides = overrides or {}
     seen: dict[str, int] = {}
     calls: list[CallCost] = []
@@ -164,7 +168,7 @@ def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
     agg: dict[str, dict] = {}
 
     for idx, call in enumerate(trace.calls):
-        price = overrides.get(call.model) or lookup(call.model)
+        price = overrides.get(call.model) or lookup(call.model, table)
         toks = _split_tokens(call.segments, call.input_tokens)
         replay_idx = [
             i for i, s in enumerate(call.segments) if s.key in seen
@@ -271,5 +275,7 @@ def analyze(trace: Trace, overrides: dict[str, Price] | None = None) -> Report:
         total_cached_tokens=sum(c.cached_tokens for c in calls),
         by_kind=by_kind,
         top_segments=sorted(agg.values(), key=lambda a: -a["cost"])[:8],
-        priced_estimate=any((overrides.get(c.model) or lookup(c.model)).estimated for c in calls),
+        priced_estimate=any(
+            (overrides.get(c.model) or lookup(c.model, table)).estimated for c in calls
+        ),
     )
