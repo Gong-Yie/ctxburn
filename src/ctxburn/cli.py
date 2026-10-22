@@ -17,7 +17,14 @@ def _tok(v: int) -> str:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    trace = Trace.load(args.trace)
+    try:
+        trace = Trace.load(args.trace)
+    except FileNotFoundError:
+        print(f"no such file: {args.trace}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"cannot read {args.trace}: {e}", file=sys.stderr)
+        return 2
     report = analyze(trace)
     if not report.n_calls:
         print(f"no calls in {args.trace}", file=sys.stderr)
@@ -75,8 +82,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
-    sys.path.insert(0, str(args.root))
-    from examples.mock_run import build  # type: ignore
+    from .demo_data import build
 
     trace = build(lang=args.lang)
     trace.save(args.out)
@@ -118,7 +124,6 @@ def main(argv: list[str] | None = None) -> int:
 
     dp = sub.add_parser("demo", help="write the synthetic example trace")
     dp.add_argument("-o", "--out", default="ctxburn-demo.jsonl")
-    dp.add_argument("--root", default=".", help=argparse.SUPPRESS)
     dp.add_argument("--lang", choices=["en", "zh"], default="en", help="language of the run")
     dp.set_defaults(func=cmd_demo)
 

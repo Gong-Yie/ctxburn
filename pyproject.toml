@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ctxburn"
-version = "0.1.0"
+version = "0.1.1"
 description = "See where an agent's token budget actually goes. Context replay tax, per turn, as a flame graph."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "gongyi" }]
+authors = [{ name = "Gong-Yie", email = "3750387410@qq.com" }]
 keywords = ["llm", "agents", "profiler", "flamegraph", "tokens", "cost", "observability"]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -17,6 +17,12 @@ classifiers = [
   "Topic :: System :: Monitoring",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Gong-Yie/ctxburn"
+Repository = "https://github.com/Gong-Yie/ctxburn"
+Issues = "https://github.com/Gong-Yie/ctxburn/issues"
+
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
@@ -26,6 +32,9 @@ ctxburn = "ctxburn.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ctxburn"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["assets/"] # screenshots are served from the CDN by README, not needed in the sdist
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -45,3 +54,4 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "src/ctxburn/render.py" = ["E501"] # inline HTML/CSS/JS template
+"src/ctxburn/demo_data.py" = ["E501"] # long verbatim prompt data

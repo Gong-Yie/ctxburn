@@ -4,7 +4,7 @@ from .analyze import CallStat, Report, SegStat, analyze
 from .capture import unwatch, watch
 from .model import Call, Segment, Trace
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "analyze",
     "Report",
